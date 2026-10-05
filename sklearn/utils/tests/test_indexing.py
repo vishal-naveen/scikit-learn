@@ -704,3 +704,65 @@ def test_shuffle_dont_convert_to_array(csc_container):
     assert type(d_s) == MockDataFrame
 
     assert_array_equal(e_s.toarray(), np.array([[4, 5], [2, 3], [0, 1]]))
+
+
+def test_shuffle_copy_false_in_place():
+    X = np.arange(20).reshape(10, 2)
+    y = list(range(10))
+    X_orig, y_orig = X.copy(), list(y)
+
+    X_s, y_s = shuffle(X, y, random_state=0, copy=False)
+
+    assert X_s is X
+    assert y_s is y
+    assert not np.array_equal(X, X_orig)
+    # rows of X and elements of y were permuted consistently
+    assert_array_equal(X[:, 0] // 2, y)
+    assert sorted(y) == y_orig
+    assert_array_equal(np.sort(X, axis=0), X_orig)
+
+
+def test_shuffle_copy_false_reproducible():
+    X1, X2 = np.arange(30), np.arange(30)
+    shuffle(X1, random_state=42, copy=False)
+    shuffle(X2, random_state=42, copy=False)
+    assert_array_equal(X1, X2)
+
+
+def test_shuffle_copy_false_memory():
+    import tracemalloc
+
+    X = np.zeros((1000, 1000))
+    tracemalloc.start()
+    try:
+        shuffle(X, random_state=0, copy=False)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < X.nbytes / 10
+
+
+def test_shuffle_copy_false_no_arrays():
+    assert shuffle(copy=False) is None
+    assert shuffle(copy=True) is None
+
+
+def test_shuffle_copy_true_does_not_modify_inputs():
+    X = np.arange(10)
+    shuffle(X, random_state=0, copy=True)
+    assert_array_equal(X, np.arange(10))
+
+
+@pytest.mark.parametrize("csr_container", CSR_CONTAINERS)
+def test_shuffle_copy_false_unsupported_types(csr_container):
+    X = np.arange(6).reshape(3, 2)
+    msg = "copy=False is only supported for numpy arrays and lists"
+    with pytest.raises(TypeError, match=msg):
+        shuffle(X, csr_container(X), random_state=0, copy=False)
+    with pytest.raises(TypeError, match=msg):
+        shuffle(MockDataFrame(X), random_state=0, copy=False)
+
+
+def test_shuffle_copy_false_n_samples_error():
+    with pytest.raises(ValueError, match="n_samples is not supported"):
+        shuffle(np.arange(5), n_samples=3, copy=False)

@@ -610,11 +610,12 @@ def resample(
         return resampled_arrays
 
 
-def shuffle(*arrays, random_state=None, n_samples=None):
+def shuffle(*arrays, random_state=None, n_samples=None, copy=True):
     """Shuffle arrays or sparse matrices in a consistent way.
 
-    This is a convenience alias to ``resample(*arrays, replace=False)`` to do
-    random permutations of the collections.
+    With `copy=True`, this is a convenience alias to
+    ``resample(*arrays, replace=False)`` to do random permutations of the
+    collections. With `copy=False`, numpy arrays and lists are shuffled in place.
 
     Parameters
     ----------
@@ -631,13 +632,27 @@ def shuffle(*arrays, random_state=None, n_samples=None):
     n_samples : int, default=None
         Number of samples to generate. If left to None this is
         automatically set to the first dimension of the arrays.  It should
-        not be larger than the length of arrays.
+        not be larger than the length of arrays. Not supported when
+        `copy=False`.
+
+    copy : bool, default=True
+        If True, return shuffled copies and leave the inputs unchanged. If
+        False, shuffle numpy arrays and lists in place along their first axis
+        and return the inputs themselves, avoiding a second copy of the data in
+        memory. Only numpy arrays and lists are supported when `copy=False`.
+        The permutation applied in place is reproducible for a given
+        `random_state` but differs from the one obtained with `copy=True`.
+        In-place shuffling can be slower than copying for arrays with many
+        rows.
+
+        .. versionadded:: 1.10
 
     Returns
     -------
     shuffled_arrays : sequence of indexable data-structures
         Sequence of shuffled copies of the collections. The original arrays
-        are not impacted.
+        are not impacted. If `copy=False`, the inputs themselves, shuffled in
+        place.
 
     See Also
     --------
@@ -676,6 +691,23 @@ def shuffle(*arrays, random_state=None, n_samples=None):
       >>> shuffle(y, n_samples=2, random_state=0)
       array([0, 1])
     """
-    return resample(
-        *arrays, replace=False, n_samples=n_samples, random_state=random_state
-    )
+    if copy:
+        return resample(
+            *arrays, replace=False, n_samples=n_samples, random_state=random_state
+        )
+
+    if n_samples is not None:
+        raise ValueError("n_samples is not supported when copy=False.")
+    if not all(isinstance(a, (np.ndarray, list)) for a in arrays):
+        raise TypeError("copy=False is only supported for numpy arrays and lists.")
+    if len(arrays) == 0:
+        return None
+    check_consistent_length(*arrays)
+    random_state = check_random_state(random_state)
+    state = random_state.get_state()
+    for a in arrays:
+        random_state.set_state(state)
+        random_state.shuffle(a)
+    if len(arrays) == 1:
+        return arrays[0]
+    return list(arrays)
